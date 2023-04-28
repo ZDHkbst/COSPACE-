@@ -1,0 +1,356 @@
+// CoSpace Robot源代码解释
+
+/////////////////////////////////////////////////////////////////////////
+//                                                                     //
+//  CoSpace Robot                                                      //
+//  Version 2.0.0                                                      //
+//  DEC 16 2022                                                        //
+//  Copyright (C) 2022 CoSpace Robot. All Rights Reserved              //
+//                                                                     //
+//  ONLY C Code can be compiled.                                       //
+//                                                                     //
+/////////////////////////////////////////////////////////////////////////
+
+#define CsBot_AI_H // 定义头文件标记，不要删除此行
+#ifndef CSBOT_REAL
+#include <windows.h> // 包含windows头文件，用于支持Windows API
+#include <stdio.h> // 包含标准输入输出库，用于支持输入输出函数
+#include <math.h> // 包含数学库，用于支持数学函数
+#define DLL_EXPORT extern __declspec(dllexport) // 定义导出函数的宏
+#define false 0 // 定义false为0
+#define true 1 // 定义true为1
+#endif
+int Duration = 0; // 持续时间变量
+int CurAction = -1; // 当前动作变量
+int CurGame = 0; // 当前游戏变量
+int MyControl = 0; // 我的控制变量
+int MyControl2 = 0; // 我的控制2变量
+int Mycontrol3 = 1; // 我的控制3变量
+int US_Front = 0; // 前超声波传感器变量
+int US_Left = 0; // 左超声波传感器变量
+int US_Right = 0; // 右超声波传感器变量
+int PositionX = 0; // X位置变量
+int PositionY = 0; // Y位置变量
+int RotationZ = 0; // Z旋转变量
+int DeltaAngle = 0; // 角度变化变量
+int DeltaDist = 0; // 距离变化变量
+int NavID = 0; // 导航ID变量
+int NavDist = 0; // 导航距离变量
+int CtrID = 0; // 控制ID变量
+int CtrDist = 0; // 控制距离变量
+int StnID = 0; // 站点ID变量
+int StnDist = 0; // 站点距离变量
+int Time = 0; // 时间变量
+int MyState = 0; // 我的状态变量
+int WheelLeft = 0; // 左轮速度变量
+int WheelRight = 0; // 右轮速度变量
+int LED = 0; // LED变量
+int AI_TeamID = 1; // 机器人团队ID变量。1:蓝色团队; 2:红色团队。
+int AI_SensorNum = 15; // 传感器数量变量
+
+#define CsBot_AI_C  // 宏定义，用于指定当前文件为一个C语言程序
+
+char TaskString[256];  // 用于保存任务信息的字符串
+struct Task
+{
+    int TaskID;  // 任务ID
+    int StationID;  // 机器人要到达的站点ID
+    int ActionID;  // 机器人要执行的动作ID
+} TaskList[10];  // 最多可以保存10个任务
+
+DLL_EXPORT int GetGameID()  // 返回当前比赛的ID
+{
+    return CurGame;
+}
+
+DLL_EXPORT int GetCurAction()  // 返回当前机器人执行的动作ID
+{
+    return CurAction;
+}
+
+DLL_EXPORT void SetTaskString(char* gameTask)  // 保存任务信息到TaskString中
+{
+    strcpy(TaskString, gameTask);
+    printf(gameTask);
+    printf("\r\n");
+}
+
+DLL_EXPORT void AddTaskItem(int TaskID, int StationID, int ActionID)  // 添加任务到TaskList中
+{
+    if (TaskID < 0 || TaskID >= 10) return;  // 检查任务ID是否有效
+    TaskList[TaskID].TaskID = TaskID;
+    TaskList[TaskID].StationID = StationID;
+    TaskList[TaskID].ActionID = ActionID;
+    printf("Task:(TaskID:%d, StID:%d, ActID:%d)\r\n", TaskID, StationID, ActionID);
+}
+
+// 转向到目标角度的函数
+int iTurnToGoAhead = 0;  // 辅助标记变量，用于控制机器人转向后直行的次数
+int TurnTo(int curRot, int targetRot)  
+{
+    int angularErrorThreshold = 2;  // 角度误差阈值
+    int minTuningSpeed = 4;  // 转向的最小速度
+    int angleDiff = (curRot - targetRot + 360) % 360;  // 计算当前角度与目标角度的差值
+    int turningSpeed;
+   
+    Duration = 128;  // 动作执行时间
+    //SuperDuration = 128;  // 超级动作执行时间，注释掉该行代码表示不执行超级动作
+
+    if (iTurnToGoAhead > 0)  // 当前正在直行
+    {
+        iTurnToGoAhead = iTurnToGoAhead + 1;  // 增加直行次数
+        WheelLeft = 40;
+        WheelRight = 40;
+        if (iTurnToGoAhead > 8)  // 直行次数达到8次后，停止直行
+        {
+            Duration = 0;
+            //SuperDuration = 0;  // 停止超级动作
+            iTurnToGoAhead = 0;
+            return 0;
+        }
+        return 1;
+    }
+
+    // 根据角度差值计算转
+     
+     struct DeliveryItem
+{
+    int ItemID; //物品编号
+    int CenterID; //中心编号
+    int CollectionPtID; //收集点编号
+    int Deadline; //截止时间
+    int ItemScore; //物品分值
+    int CurStatus; //物品当前状态：1-在中心，2-在车上，3-在站点
+} DeliveryItemList[100]; //所有物品
+
+DLL_EXPORT void AddDeliveryItem(int ItemID, int CenterID, int StationID, int ItemScore, int Deadline, int CurStatus)
+{
+    //向物品列表中添加一个物品
+    if (ItemID < 0 || ItemID > 99) {
+        printf("ItemID Error! ID = %d", ItemID);
+        return;
+    }
+    DeliveryItemList[ItemID].ItemID = ItemID;
+    DeliveryItemList[ItemID].CenterID = CenterID;
+    DeliveryItemList[ItemID].CollectionPtID = StationID;
+    DeliveryItemList[ItemID].ItemScore = ItemScore;
+    DeliveryItemList[ItemID].Deadline = Deadline;
+    DeliveryItemList[ItemID].CurStatus = CurStatus;
+}
+
+DLL_EXPORT void RequestItems(int* Items)
+{
+    //请求物品列表
+    for (int i = 0; i < 6; i++)
+    {
+        Items[i] = -1;
+    }
+}
+
+void GameStart()
+{
+    //游戏开始时执行的操作
+
+}
+
+void AILoopStart()
+{
+    //循环执行的操作
+
+    printf("\r\nCurAction=%d  MyControl=%d", CurAction, MyControl);
+}
+
+DLL_EXPORT char* GetTeamName()
+{
+    //返回队名
+    return "SFDSA";
+}
+
+char info[3000];
+
+// 获取调试信息
+DLL_EXPORT char* GetDebugInfo()
+{
+    // 格式化调试信息字符串
+    sprintf(info, "Duration=%d;CurAction=%d;CurGame=%d;MyControl=%d;MyControl2=%d;Mycontrol3=%d;US_Front=%d;US_Left=%d;US_Right=%d;PositionX=%d;PositionY=%d;RotationZ=%d;DeltaAngle=%d;DeltaDist=%d;NavID=%d;NavDist=%d;CtrID=%d;CtrDist=%d;StnID=%d;StnDist=%d;Time=%d;MyState=%d;WheelLeft=%d;WheelRight=%d;LED=%d;",Duration,CurAction,CurGame,MyControl,MyControl2,Mycontrol3,US_Front,US_Left,US_Right,PositionX,PositionY,RotationZ,DeltaAngle,DeltaDist,NavID,NavDist,CtrID,CtrDist,StnID,StnDist,Time,MyState,WheelLeft,WheelRight,LED);
+    return info;
+}
+
+// 设置游戏ID
+DLL_EXPORT void SetGameID(int GameID)
+{
+    int i = 0;
+    // 如果当前游戏ID与传入的游戏ID不同
+    if (CurGame != GameID)
+    {
+        GameStart();
+        // 初始化交付项目列表
+        for (i = 0; i < 100; i++)
+        {
+            DeliveryItemList[i].ItemID = i;
+            DeliveryItemList[i].CenterID = -1;
+            DeliveryItemList[i].CollectionPtID = 0;
+            DeliveryItemList[i].Deadline = 0;
+            DeliveryItemList[i].ItemScore = 0;
+            DeliveryItemList[i].CurStatus = 0;
+        }
+        // 初始化任务列表
+        for (i = 0; i < 10; i++)
+        {
+            TaskList[i].TaskID = i;
+            TaskList[i].StationID = 0;
+            TaskList[i].ActionID = 0;
+        }
+    }
+    // 更新当前游戏ID
+    CurGame = GameID;
+}
+
+// 设置AI输入数据
+DLL_EXPORT void SetDataAI(volatile int* packet, volatile int *AI_IN)
+{
+    int sum = 0;
+
+    // 从AI输入数据中提取感测器和位置信息，并计算其和
+    US_Front = AI_IN[0]; packet[0] = US_Front; sum += US_Front;
+    US_Left = AI_IN[1]; packet[1] = US_Left; sum += US_Left;
+    US_Right = AI_IN[2]; packet[2] = US_Right; sum += US_Right;
+    PositionX = AI_IN[3]; packet[3] = PositionX; sum += PositionX;
+    PositionY = AI_IN[4]; packet[4] = PositionY; sum += PositionY;
+    RotationZ = AI_IN[5]; packet[5] = RotationZ; sum += RotationZ;
+    DeltaAngle = AI_IN[6]; packet[6] = DeltaAngle; sum += DeltaAngle;
+    DeltaDist = AI_IN[7]; packet[7] = DeltaDist; sum += DeltaDist;
+    NavID = AI_IN[8]; packet[8] = NavID; sum += NavID;
+    NavDist = AI_IN[9]; packet[9] = NavDist; sum += NavDist;
+        CtrID = AI_IN[10]; packet[10] = CtrID; sum += CtrID;
+    CtrDist = AI_IN[11]; packet[11] = CtrDist; sum += CtrDist;
+    StnID = AI_IN[12]; packet[12] = StnID; sum += StnID;
+    StnDist = AI_IN[13]; packet[13] = StnDist; sum += StnDist;
+    Time = AI_IN[14]; packet[14] = Time; sum += Time;
+    MyState = AI_IN[15]; packet[15] = MyState; sum += MyState;
+    packet[16] = sum;
+}
+
+// 获取AI输出命令
+DLL_EXPORT void GetCommand(int *AI_OUT)
+{
+    AI_OUT[0] = WheelLeft;
+    AI_OUT[1] = WheelRight;
+    AI_OUT[2] = LED;
+    AI_OUT[3] = MyState;
+}
+
+// 游戏0的逻辑
+void Game0()
+{
+    if(Duration>0)
+    {
+        Duration--;
+    }
+    else if(MyControl == 1)
+    {
+        Duration = 65;
+        CurAction =1;
+    }
+    else if(StnDist>=-2 && StnDist<=2&&(MyControl == 0))
+    {
+        Duration = 91;
+        CurAction =2;
+    }
+    else if(NavDist<=6&&(NavID == 23 || NavID == 28 || NavID == 12 || NavID == 13))
+    {
+        Duration = 41;
+        CurAction =3;
+    }
+    else if(NavDist<=3&&(NavID == 29 || NavID == 17 || NavID == 7 || NavID == 6 || NavID == 5 || NavID == 16 || NavID == 22 || NavID == 22 || NavID == 18))
+    {
+        Duration = 41;
+        CurAction =4;
+    }
+    else if(true)
+    {
+        Duration = 0;
+        CurAction =5;
+    }
+    // 根据当前动作执行相应操作
+    switch(CurAction)
+    {
+        case 1:
+            WheelLeft=-20;
+            WheelRight=20;
+            LED=0;
+            MyControl = 0;
+            if(Duration<16) // 离开中心区域向前行进。
+            {
+               WheelLeft = 40;
+               WheelRight = 40;
+            }
+            break;
+        case 2:
+            WheelLeft=0;
+            WheelRight=0;
+            LED=1;
+            if(Duration < 12)
+            {
+               if( StnID == 1 || StnID == 11 || StnID == 8 || StnID == 15 || StnID == 13)
+               {
+                  MyControl = 1; // 需要转180度。
+                  Duration = 0;
+               }
+               // 否则向前行进离开中心区域。
+               WheelLeft = 40;
+               WheelRight = 40;   
+            }
+            
+            break;
+        case 3:
+            WheelLeft=30;
+            WheelRight=0;
+            LED=0;
+            break;
+        case 4:
+            WheelLeft=0;
+            WheelRight=30;
+            LED=0;
+            break;
+        case 5:
+            WheelLeft=0;
+            WheelRight=0;
+            LED=0;
+            WheelLeft = 30 + DeltaDist;
+                     WheelRight = 30 - DeltaDist;
+            WheelLeft = WheelLeft > 30 ? 30 : (WheelLeft < -30 ? -30 : WheelLeft);
+            WheelRight = WheelRight > 30 ? 30 : (WheelRight < -30 ? -30 : WheelRight);
+            if(DeltaDist<10 && DeltaDist>-10)
+            {
+                WheelLeft = 40;
+                WheelRight = 40;
+            }
+            MyControl = 0;
+            
+            break;
+        default:
+            break;
+    }
+}
+
+// AI循环
+DLL_EXPORT void AILoop()
+{
+    AILoopStart();
+    // 根据当前游戏执行相应游戏逻辑
+    switch (CurGame)
+    {
+    case 0:
+        Game0();
+        break;
+    default:
+        WheelLeft=0;
+        WheelRight=0;
+        LED=0;
+        MyState=0;
+        break;
+    }    
+}
+
+
